@@ -3662,9 +3662,13 @@ impl crate::immutable_store::ImmutableStore for LocalImmutableStore {
                     partition: found.partition,
                     context: found.context,
                     stored_local: found.data.pack_file != 0,
+                    // The implicit claim only covers an entry that has contents: with no pack
+                    // file `get` answers `PayloadNotFound`, and claiming durable anyway makes an
+                    // upload skip the write that would fill the gap. A recorded flag says a
+                    // remote holds the payload, which stands on its own.
                     stored_durable: found.data.flags & FragmentFlags::PayloadStoredDurable.bits()
                         != 0
-                        || self.settings.implicit_durable_stored,
+                        || (self.settings.implicit_durable_stored && found.data.pack_file != 0),
                 }
             };
         }
@@ -5981,6 +5985,73 @@ mod tests {
         assert!(
             entry[0].data.last_access > STALE_ACCESS,
             "the stamp a resolve made must survive the flush"
+        );
+    }
+
+    /// Register an address on a durable store with and without a payload, and answer what `query`
+    /// says about it.
+    async fn query_after_put(payload: Option<Bytes>) -> StoreMatchResult {
+        use crate::immutable_store::ImmutableStore;
+
+        let store = LocalImmutableStore::new(None, server_settings())
+            .await
+            .unwrap();
+        let partition = Partition::from([0x2au8; 16]);
+        let (address, bytes) = payload_off_bucket_zero(0);
+        let fragment = Fragment {
+            flags: 0,
+            size_payload: bytes.len() as u32,
+            size_content: bytes.len() as u64,
+        };
+
+        store
+            .clone()
+            .put(partition, address, fragment, payload, false)
+            .await
+            .expect("put registers the address");
+
+        let mut results = [StoreMatchResult::default(); 1];
+        store
+            .clone()
+            .query(partition, &[address], &mut results)
+            .await
+            .unwrap();
+        results[0]
+    }
+
+    /// An entry with no payload behind it is unservable — `get` answers `PayloadNotFound` for it —
+    /// so a store must not claim it durable however durable the store itself is. The upload path
+    /// reads that claim to decide the peer already holds the fragment, so over-claiming here skips
+    /// the very upload that would fill the gap, on the first push and on every one after it.
+    #[tokio::test]
+    async fn a_payload_less_entry_is_registered_but_never_durable() {
+        let result = query_after_put(None).await;
+
+        assert_eq!(
+            result.match_made,
+            StoreMatch::MatchFull,
+            "the address is in the index"
+        );
+        assert!(!result.stored_local, "no payload was ever written");
+        assert!(
+            !result.stored_durable,
+            "an entry with no payload must not be advertised as durably stored"
+        );
+    }
+
+    /// The counterpart: withholding the claim is about the missing payload, not about the store.
+    /// A fragment whose bytes are here still reports durable, which is what lets a re-push skip
+    /// the upload it genuinely does not need.
+    #[tokio::test]
+    async fn a_payload_bearing_entry_stays_durable() {
+        let payload = payload_off_bucket_zero(0).1;
+        let result = query_after_put(Some(payload)).await;
+
+        assert_eq!(result.match_made, StoreMatch::MatchFull);
+        assert!(result.stored_local, "the payload is here");
+        assert!(
+            result.stored_durable,
+            "a durable store still vouches for the payloads it holds"
         );
     }
 

@@ -28,6 +28,11 @@ service RepositoryService {
   // Compare-and-swap update of a repository's metadata pointer. CAS miss is
   // signalled in-band via the response, never as a non-OK gRPC status.
   rpc RepositoryMetadataSet(RepositoryMetadataSetRequest) returns (RepositoryMetadataSetResponse);
+  // Rename a repository: rewrite the canonical `name` in its metadata and
+  // remap the name -> id registry in the same operation. This is the only
+  // sanctioned way to change `name` — RepositoryMetadataSet still refuses it,
+  // because that path cannot keep the registry in step with the blob.
+  rpc RepositoryRename     (RepositoryRenameRequest)     returns (RepositoryRenameResponse);
 }
 
 // A service to receive requests forwarded on from another Lore Server,
@@ -153,4 +158,28 @@ message RepositoryMetadataSetRequest {
 message RepositoryMetadataSetResponse {
   // The repository's current metadata pointer after the call.
   bytes metadata = 1;
+}
+
+// Request to rename a repository, addressed by id or by the name it answers
+// to today. `new_name` is subject to the same validation as
+// RepositoryCreateRequest.name and must not already be taken by another
+// repository. The rename is a hard one: the old name stops resolving.
+message RepositoryRenameRequest {
+  // Which repository to rename. Addressing by id is what makes a retry
+  // work after a partial rename, when the old name no longer resolves.
+  oneof query {
+    // The repository's id.
+    bytes id = 1;
+    // The name the repository currently answers to.
+    string name = 2;
+  }
+  // The name the repository should answer to from now on. Passing the name
+  // it already has is a no-op that still repairs the name -> id mapping.
+  string new_name = 3;
+}
+
+// Response carrying the repository record as it stands after the rename.
+message RepositoryRenameResponse {
+  // Repository record, with `name` equal to the request's `new_name`.
+  lore.model.v1.Repository repository = 1;
 }

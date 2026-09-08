@@ -32,6 +32,7 @@ use lore::interface::LoreSharedStoreMode;
 use lore::interface::LoreString;
 use lore::repository;
 use lore::repository::LoreRepositoryDeleteArgs;
+use lore::repository::LoreRepositoryRenameArgs;
 use lore::repository::LoreVfsType;
 use lore::runtime;
 use parking_lot::Mutex;
@@ -243,6 +244,17 @@ pub struct RepositoryDeleteArgs {
 }
 
 #[derive(Args)]
+pub struct RepositoryRenameArgs {
+    /// URL of repository
+    #[clap(value_name = "url")]
+    url: String,
+
+    /// The name the repository should answer to from now on
+    #[clap(value_name = "new-name")]
+    new_name: String,
+}
+
+#[derive(Args)]
 pub struct RepositoryInfoArgs {
     /// URL of repository
     #[clap(value_name = "url")]
@@ -367,6 +379,9 @@ pub enum RepositoryCommands {
 
     /// Delete a repository
     Delete(RepositoryDeleteArgs),
+
+    /// Rename a repository. The old name stops resolving; history is untouched
+    Rename(RepositoryRenameArgs),
 
     /// Verify repository state consistency
     Verify(RepositoryVerifyArgs),
@@ -971,6 +986,45 @@ pub fn handle_repository_delete(globals: LoreGlobalArgs, args: &RepositoryDelete
     ));
 
     return runtime().block_on(repository::delete(globals, args, callback)) as u8;
+}
+
+pub fn handle_repository_rename(globals: LoreGlobalArgs, args: &RepositoryRenameArgs) -> u8 {
+    // Passed through as given: a full URL, or a bare name or ID that the core resolves
+    // against this working copy's remote.
+    let rename_args = LoreRepositoryRenameArgs {
+        repository_url: LoreString::from_str(args.url.as_str()),
+        new_name: LoreString::from_str(args.new_name.as_str()),
+    };
+
+    let dry_run = globals.dry_run();
+    let new_name = args.new_name.clone();
+
+    let callback = output_formatter().unwrap_or(Some(
+        (Box::new(move |event: &LoreEvent| match event {
+            LoreEvent::Complete(data) if data.status == 0 => {
+                if dry_run {
+                    println!(
+                        "{}Repository would be renamed to {new_name}{}",
+                        CommonStyles::SUCCESS,
+                        anstyle::Reset
+                    );
+                } else {
+                    println!(
+                        "{}Repository renamed to {new_name}{}",
+                        CommonStyles::SUCCESS,
+                        anstyle::Reset
+                    );
+                }
+            }
+            LoreEvent::Maintenance(data) => {
+                util::handle_maintenance_event(data);
+            }
+            _ => (),
+        }) as EventCallbackFn)
+            .with_defaults(),
+    ));
+
+    return runtime().block_on(repository::rename(globals, rename_args, callback)) as u8;
 }
 
 fn format_clone_retain_replace(retain: u64, replace: u64) -> String {
@@ -1689,6 +1743,7 @@ pub fn handle_repository_commands(cmd: &RepositoryCommands, globals: LoreGlobalA
         RepositoryCommands::List(args) => handle_repository_list(globals, args),
         RepositoryCommands::Create(args) => handle_repository_create(globals, args),
         RepositoryCommands::Delete(args) => handle_repository_delete(globals, args),
+        RepositoryCommands::Rename(args) => handle_repository_rename(globals, args),
         RepositoryCommands::Clone(args) => handle_repository_clone(globals, args),
         RepositoryCommands::Verify(args) => handle_repository_verify(globals, args),
         RepositoryCommands::Dump(args) => handle_repository_dump(

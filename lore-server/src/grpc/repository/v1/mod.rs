@@ -6,6 +6,7 @@ pub mod repository_get;
 pub mod repository_list;
 pub mod repository_metadata_get;
 pub mod repository_metadata_set;
+pub mod repository_rename;
 pub mod service;
 
 mod record;

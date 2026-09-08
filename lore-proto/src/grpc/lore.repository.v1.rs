@@ -263,6 +263,62 @@ impl ::prost::Name for RepositoryMetadataSetResponse {
         "/lore.repository.v1.RepositoryMetadataSetResponse".into()
     }
 }
+/// Request to rename a repository, addressed by id or by the name it answers
+/// to today. `new_name` is subject to the same validation as
+/// RepositoryCreateRequest.name and must not already be taken by another
+/// repository. The rename is a hard one: the old name stops resolving.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RepositoryRenameRequest {
+    /// The name the repository should answer to from now on. Passing the name
+    /// it already has is a no-op that still repairs the name -> id mapping.
+    #[prost(string, tag = "3")]
+    pub new_name: ::prost::alloc::string::String,
+    /// Which repository to rename. Addressing by id is what makes a retry
+    /// work after a partial rename, when the old name no longer resolves.
+    #[prost(oneof = "repository_rename_request::Query", tags = "1, 2")]
+    pub query: ::core::option::Option<repository_rename_request::Query>,
+}
+/// Nested message and enum types in `RepositoryRenameRequest`.
+pub mod repository_rename_request {
+    /// Which repository to rename. Addressing by id is what makes a retry
+    /// work after a partial rename, when the old name no longer resolves.
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Query {
+        /// The repository's id.
+        #[prost(bytes, tag = "1")]
+        Id(::prost::bytes::Bytes),
+        /// The name the repository currently answers to.
+        #[prost(string, tag = "2")]
+        Name(::prost::alloc::string::String),
+    }
+}
+impl ::prost::Name for RepositoryRenameRequest {
+    const NAME: &'static str = "RepositoryRenameRequest";
+    const PACKAGE: &'static str = "lore.repository.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "lore.repository.v1.RepositoryRenameRequest".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/lore.repository.v1.RepositoryRenameRequest".into()
+    }
+}
+/// Response carrying the repository record as it stands after the rename.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RepositoryRenameResponse {
+    /// Repository record, with `name` equal to the request's `new_name`.
+    #[prost(message, optional, tag = "1")]
+    pub repository: ::core::option::Option<crate::lore::model::v1::Repository>,
+}
+impl ::prost::Name for RepositoryRenameResponse {
+    const NAME: &'static str = "RepositoryRenameResponse";
+    const PACKAGE: &'static str = "lore.repository.v1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "lore.repository.v1.RepositoryRenameResponse".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/lore.repository.v1.RepositoryRenameResponse".into()
+    }
+}
 /// Generated client implementations.
 pub mod repository_service_client {
     #![allow(
@@ -545,6 +601,39 @@ pub mod repository_service_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        /// Rename a repository: rewrite the canonical `name` in its metadata and
+        /// remap the name -> id registry in the same operation. This is the only
+        /// sanctioned way to change `name` — RepositoryMetadataSet still refuses it,
+        /// because that path cannot keep the registry in step with the blob.
+        pub async fn repository_rename(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RepositoryRenameRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RepositoryRenameResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lore.repository.v1.RepositoryService/RepositoryRename",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lore.repository.v1.RepositoryService",
+                        "RepositoryRename",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -618,6 +707,17 @@ pub mod repository_service_server {
             request: tonic::Request<super::RepositoryMetadataSetRequest>,
         ) -> std::result::Result<
             tonic::Response<super::RepositoryMetadataSetResponse>,
+            tonic::Status,
+        >;
+        /// Rename a repository: rewrite the canonical `name` in its metadata and
+        /// remap the name -> id registry in the same operation. This is the only
+        /// sanctioned way to change `name` — RepositoryMetadataSet still refuses it,
+        /// because that path cannot keep the registry in step with the blob.
+        async fn repository_rename(
+            &self,
+            request: tonic::Request<super::RepositoryRenameRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RepositoryRenameResponse>,
             tonic::Status,
         >;
     }
@@ -970,6 +1070,52 @@ pub mod repository_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = RepositoryMetadataSetSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lore.repository.v1.RepositoryService/RepositoryRename" => {
+                    #[allow(non_camel_case_types)]
+                    struct RepositoryRenameSvc<T: RepositoryService>(pub Arc<T>);
+                    impl<
+                        T: RepositoryService,
+                    > tonic::server::UnaryService<super::RepositoryRenameRequest>
+                    for RepositoryRenameSvc<T> {
+                        type Response = super::RepositoryRenameResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RepositoryRenameRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as RepositoryService>::repository_rename(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RepositoryRenameSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

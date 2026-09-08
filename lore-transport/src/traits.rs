@@ -341,6 +341,14 @@ pub trait Repository: Send + Sync {
         expected: Hash,
         new: Hash,
     ) -> Result<MetadataSetResult, ProtocolError>;
+
+    /// Rename a repository: move its canonical name and its name -> id
+    /// mapping together. The old name stops resolving.
+    async fn rename(
+        &self,
+        id: RepositoryId,
+        new_name: &str,
+    ) -> Result<RepositoryData, ProtocolError>;
 }
 
 /// Admin protocol

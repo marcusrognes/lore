@@ -1640,6 +1640,19 @@ impl Repository for GRPCRepository {
         )
         .await
     }
+
+    async fn rename(
+        &self,
+        id: RepositoryId,
+        new_name: &str,
+    ) -> Result<RepositoryData, ProtocolError> {
+        with_reconnect(
+            &self.connection,
+            || async { self.client.read().await.rename(id, new_name).await },
+            |reconnect_id| self.reconnect(reconnect_id),
+        )
+        .await
+    }
 }
 
 /// Lock protocol implementation over gRPC

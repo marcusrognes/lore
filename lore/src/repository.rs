@@ -622,6 +622,46 @@ pub async fn delete(
         .await
 }
 
+/// Arguments for renaming a remote repository.
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoreRepositoryRenameArgs {
+    /// URL of the remote repository to rename
+    pub repository_url: LoreString,
+    /// The name the repository should answer to from now on
+    pub new_name: LoreString,
+}
+
+/// Rename a remote repository.
+///
+/// The repository keeps its id, its branches and its history; only the name
+/// it resolves under changes, and the old name stops resolving.
+pub async fn rename(
+    globals: LoreGlobalArgs,
+    args: LoreRepositoryRenameArgs,
+    callback: LoreEventCallback,
+) -> i32 {
+    let execution = setup_execution(globals, callback);
+
+    LORE_CONTEXT
+        .scope(execution, async move {
+            log_command_info(&rename, &args);
+
+            let time_start = Instant::now();
+
+            let result = lore_revision::repository::rename::rename(
+                args.repository_url.as_str(),
+                args.new_name.as_str(),
+                execution_context().globals().identity().unwrap_or_default(),
+            )
+            .await;
+
+            log_command_done(&rename, time_start);
+            execution_context().dispatcher.complete_result(result).await
+        })
+        .await
+}
+
 /// Arguments for releasing cached store references for the repository path.
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LoreArgs)]

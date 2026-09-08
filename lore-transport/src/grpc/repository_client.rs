@@ -238,4 +238,43 @@ impl RepositoryService {
             current_hash,
         })
     }
+
+    /// Rename a repository, addressing it by id so a retry after a partial
+    /// rename still finds it once the old name has stopped resolving.
+    pub async fn rename(
+        &self,
+        id: RepositoryId,
+        new_name: &str,
+    ) -> Result<RepositoryData, ProtocolError> {
+        let mut retry = grpc_retry();
+        let response = loop {
+            let request = repository_v1::RepositoryRenameRequest {
+                query: Some(repository_v1::repository_rename_request::Query::Id(
+                    id.into(),
+                )),
+                new_name: new_name.to_string(),
+            };
+
+            let mut client = self.client.clone();
+
+            match client.repository_rename(request).await {
+                Ok(response) => {
+                    break response.into_inner();
+                }
+                Err(status) => {
+                    handle_error(&mut retry, status).await?;
+                }
+            }
+        };
+
+        let repository = response
+            .repository
+            .ok_or_else(|| ProtocolError::internal("Repository rename returned no repository"))?;
+
+        Ok(RepositoryData {
+            id: repository.id.into(),
+            name: repository.name,
+            metadata: repository.metadata.into(),
+        })
+    }
 }

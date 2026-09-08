@@ -16,6 +16,8 @@ use lore_proto::lore::repository::v1::RepositoryMetadataGetRequest;
 use lore_proto::lore::repository::v1::RepositoryMetadataGetResponse;
 use lore_proto::lore::repository::v1::RepositoryMetadataSetRequest;
 use lore_proto::lore::repository::v1::RepositoryMetadataSetResponse;
+use lore_proto::lore::repository::v1::RepositoryRenameRequest;
+use lore_proto::lore::repository::v1::RepositoryRenameResponse;
 use lore_proto::lore::repository::v1::repository_service_server::RepositoryService;
 use lore_revision::environment::EnvironmentConfig;
 use lore_telemetry::InstrumentProvider;
@@ -30,6 +32,7 @@ use super::repository_get;
 use super::repository_list;
 use super::repository_metadata_get;
 use super::repository_metadata_set;
+use super::repository_rename;
 use crate::authnz::repository_authorizer::repository_authorizer;
 use crate::grpc::forwarded_requests::ForwardedRequests;
 use crate::grpc::timeout_grpc;
@@ -187,6 +190,22 @@ impl RepositoryService for LoreRepositoryV1Service {
         timeout_grpc(
             self.rpc_timeout,
             repository_metadata_set::handler(
+                request,
+                repository_authorizer(self.auth_url()),
+                self.immutable_store.clone(),
+                self.mutable_store.clone(),
+            ),
+        )
+        .await
+    }
+
+    async fn repository_rename(
+        &self,
+        request: Request<RepositoryRenameRequest>,
+    ) -> Result<Response<RepositoryRenameResponse>, Status> {
+        timeout_grpc(
+            self.rpc_timeout,
+            repository_rename::handler(
                 request,
                 repository_authorizer(self.auth_url()),
                 self.immutable_store.clone(),
